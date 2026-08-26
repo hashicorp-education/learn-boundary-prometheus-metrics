@@ -45,6 +45,9 @@ do
         init_terraform
         shift
         ;;
+        docker)
+        init_compose
+        ;;
         login)
         login
         shift

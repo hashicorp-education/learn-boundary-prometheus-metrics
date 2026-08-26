@@ -1,8 +1,6 @@
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
-version: "3.8"
-
 networks:
   default:
   worker:
@@ -23,7 +21,7 @@ services:
       retries: 10
 
   db-init:
-    image: hashicorp/boundary:0.8.0
+    image: hashicorp/boundary:0.21.0
     command: ["database", "init", "-config", "/boundary/controller.hcl"]
     volumes:
       - "${PWD}/:/boundary/"
@@ -34,7 +32,7 @@ services:
         condition: service_healthy
 
   controller:
-    image: hashicorp/boundary:0.8.0
+    image: hashicorp/boundary:0.21.0
     # I had to `docker restart boundary_controller_1` a couple times when
     # running on an Ubuntu host.
     entrypoint: sh -c "sleep 3 && exec boundary server -config /boundary/controller.hcl -log-level debug"
@@ -56,7 +54,7 @@ services:
       - worker
 
   worker:
-    image:  hashicorp/boundary:0.8.0
+    image:  hashicorp/boundary:0.21.0
     command: ["server", "-config", "/boundary/worker.hcl", "-log-level", "debug"]
     volumes:
       - "${PWD}/:/boundary/"
@@ -64,6 +62,8 @@ services:
     ports:
       - "9202:9202"
       - "9204:9203"
+    cap_add:
+      - IPC_LOCK
     environment:
       - HOSTNAME=worker
     depends_on:

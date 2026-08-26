@@ -5,13 +5,13 @@ terraform {
   required_providers {
     boundary = {
       source  = "hashicorp/boundary"
-      version = "1.0.5"
+      version = "1.6.1"
     }
   }
 }
 
 provider "boundary" {
-  addr             = "http://127.0.0.1:9200"
+  addr = "http://127.0.0.1:9200"
   recovery_kms_hcl = <<EOT
 kms "aead" {
   purpose = "recovery"
@@ -53,7 +53,7 @@ resource "boundary_user" "user" {
   for_each    = var.users
   name        = each.key
   description = "User resource for ${each.key}"
-  account_ids = [boundary_account.user[each.value].id]
+  account_ids = [boundary_account_password.user[each.key].id]
   scope_id    = boundary_scope.org.id
 }
 
@@ -64,11 +64,10 @@ resource "boundary_auth_method" "password" {
   scope_id    = boundary_scope.org.id
 }
 
-resource "boundary_account" "user" {
+resource "boundary_account_password" "user" {
   for_each       = var.users
   name           = each.key
   description    = "User account for ${each.key}"
-  type           = "password"
   login_name     = lower(each.key)
   password       = "password"
   auth_method_id = boundary_auth_method.password.id
@@ -77,9 +76,9 @@ resource "boundary_account" "user" {
 resource "boundary_role" "global_anon_listing" {
   scope_id = boundary_scope.global.id
   grant_strings = [
-    "id=*;type=auth-method;actions=list,authenticate",
+    "ids=*;type=auth-method;actions=list,authenticate",
     "type=scope;actions=list",
-    "id={{account.id}};actions=read,change-password"
+    "ids={{account.id}};actions=read,change-password"
   ]
   principal_ids = ["u_anon"]
 }
@@ -87,16 +86,17 @@ resource "boundary_role" "global_anon_listing" {
 resource "boundary_role" "org_anon_listing" {
   scope_id = boundary_scope.org.id
   grant_strings = [
-    "id=*;type=auth-method;actions=list,authenticate",
+    "ids=*;type=auth-method;actions=list,authenticate",
     "type=scope;actions=list",
-    "id={{account.id}};actions=read,change-password"
+    "ids={{account.id}};actions=read,change-password"
   ]
   principal_ids = ["u_anon"]
 }
+
 resource "boundary_role" "org_admin" {
-  scope_id       = "global"
-  grant_scope_id = boundary_scope.org.id
-  grant_strings  = ["id=*;type=*;actions=*"]
+  scope_id        = "global"
+  grant_scope_ids = [boundary_scope.org.id]
+  grant_strings   = ["ids=*;type=*;actions=*"]
   principal_ids = concat(
     [for user in boundary_user.user : user.id],
     ["u_auth"]
@@ -104,40 +104,37 @@ resource "boundary_role" "org_admin" {
 }
 
 resource "boundary_role" "proj_admin" {
-  scope_id       = boundary_scope.org.id
-  grant_scope_id = boundary_scope.project.id
-  grant_strings  = ["id=*;type=*;actions=*"]
+  scope_id        = boundary_scope.org.id
+  grant_scope_ids = [boundary_scope.project.id]
+  grant_strings   = ["ids=*;type=*;actions=*"]
   principal_ids = concat(
     [for user in boundary_user.user : user.id],
     ["u_auth"]
   )
 }
 
-resource "boundary_host_catalog" "databases" {
+resource "boundary_host_catalog_static" "databases" {
   name        = "databases"
   description = "Database targets"
-  type        = "static"
   scope_id    = boundary_scope.project.id
 }
 
-resource "boundary_host" "localhost" {
-  type            = "static"
+resource "boundary_host_static" "localhost" {
   name            = "localhost"
   description     = "Localhost host"
   address         = "localhost"
-  host_catalog_id = boundary_host_catalog.databases.id
+  host_catalog_id = boundary_host_catalog_static.databases.id
 }
 
 # Target hosts available on localhost: ssh and postgres
 # Postgres is exposed to localhost for debugging of the
 # Boundary DB from the CLI. Assumes SSHD is running on
 # localhost.
-resource "boundary_host_set" "local" {
-  type            = "static"
+resource "boundary_host_set_static" "local" {
   name            = "local"
   description     = "Host set for local servers"
-  host_catalog_id = boundary_host_catalog.databases.id
-  host_ids        = [boundary_host.localhost.id]
+  host_catalog_id = boundary_host_catalog_static.databases.id
+  host_ids        = [boundary_host_static.localhost.id]
 }
 
 resource "boundary_target" "ssh" {
@@ -148,8 +145,8 @@ resource "boundary_target" "ssh" {
   session_connection_limit = -1
   session_max_seconds      = 2
   default_port             = 22
-  host_set_ids = [
-    boundary_host_set.local.id
+  host_source_ids = [
+    boundary_host_set_static.local.id
   ]
 }
 
@@ -161,26 +158,24 @@ resource "boundary_target" "db" {
   session_connection_limit = -1
   session_max_seconds      = 200
   default_port             = 5432
-  host_set_ids = [
-    boundary_host_set.local.id
+  host_source_ids = [
+    boundary_host_set_static.local.id
   ]
 }
 
-resource "boundary_host" "postgres" {
-  type        = "static"
+resource "boundary_host_static" "postgres" {
   name        = "postgres"
   description = "Private postgres container"
   # DNS set via docker-compose
   address         = "postgres"
-  host_catalog_id = boundary_host_catalog.databases.id
+  host_catalog_id = boundary_host_catalog_static.databases.id
 }
 
-resource "boundary_host_set" "postgres" {
-  type            = "static"
+resource "boundary_host_set_static" "postgres" {
   name            = "postgres"
   description     = "Host set for postgres containers"
-  host_catalog_id = boundary_host_catalog.databases.id
-  host_ids        = [boundary_host.postgres.id]
+  host_catalog_id = boundary_host_catalog_static.databases.id
+  host_ids        = [boundary_host_static.postgres.id]
 }
 
 resource "boundary_target" "postgres" {
@@ -191,7 +186,7 @@ resource "boundary_target" "postgres" {
   session_connection_limit = -1
   session_max_seconds      = 300
   default_port             = 5432
-  host_set_ids = [
-    boundary_host_set.postgres.id
+  host_source_ids = [
+    boundary_host_set_static.postgres.id
   ]
 }

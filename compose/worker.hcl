@@ -6,15 +6,16 @@
 disable_mlock = true
 
 listener "tcp" {
-	address = "worker"
-	purpose = "proxy"
-	tls_disable = true
+  # Added the proxy port here so it binds correctly
+  address = "0.0.0.0:9202"
+  purpose = "proxy"
+  tls_disable = true
 }
 
 // listener "tcp" {
 //   address = "0.0.0.0:9203"
-// 	purpose = "ops"
-// 	tls_disable = true
+//   purpose = "ops"
+//   tls_disable = true
 // }
 
 worker {
@@ -22,7 +23,9 @@ worker {
   description = "A worker for a docker demo"
   address     = "worker"
   public_addr = "127.0.0.1:9202"
-  controllers = ["boundary:9201"]
+
+  # Changed from 'controllers' to 'initial_upstreams'
+  initial_upstreams = ["boundary:9201"]
 }
 
 kms "aead" {
