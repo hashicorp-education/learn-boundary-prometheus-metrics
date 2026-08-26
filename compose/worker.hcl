@@ -6,7 +6,6 @@
 disable_mlock = true
 
 listener "tcp" {
-  # Added the proxy port here so it binds correctly
   address = "0.0.0.0:9202"
   purpose = "proxy"
   tls_disable = true
